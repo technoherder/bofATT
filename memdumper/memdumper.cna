@@ -1,0 +1,53 @@
+# memdumper.cna - Aggressor script for Memory Dumper BOF
+#
+# Load this script in Cobalt Strike:
+#   Cobalt Strike -> Script Manager -> Load
+#
+# Usage:
+#   memdumper <processname> [outputfolder]
+#
+# Examples:
+#   memdumper readyone
+#   memdumper notepad C:\Dumps
+
+alias memdumper {
+    local('$barch $handle $data $args');
+
+    # Check arguments
+    if (size(@_) < 2) {
+        berror($1, "Usage: memdumper <processname> [outputfolder]");
+        berror($1, "Example: memdumper readyone C:\\Dumps");
+        return;
+    }
+
+    # Get beacon architecture
+    $barch = barch($1);
+
+    # Build the object file path
+    $handle = openf(script_resource("memdumper. $+ $barch $+ .o"));
+    $data = readb($handle, -1);
+    closef($handle);
+
+    if (strlen($data) == 0) {
+        berror($1, "Could not read BOF file: memdumper. $+ $barch $+ .o");
+        return;
+    }
+
+    # Build arguments
+    $args = "/process:" . $2;
+    if (size(@_) >= 3) {
+        $args = $args . " /output:" . $3;
+    }
+
+    btask($1, "Tasked beacon to create memory dump of $2");
+
+    # Execute the BOF
+    beacon_inline_execute($1, $data, "go", $args);
+}
+
+# Add beacon command help
+beacon_command_register(
+    "memdumper",
+    "Create a MiniDump of a target process for debugging analysis",
+    "Usage: memdumper <processname> [outputfolder]\n\nCreate a full memory dump of the specified process.\nThe dump can be analyzed with Cheat Engine, x64dbg, or WinDbg.\n\nExamples:\n  memdumper readyone\n  memdumper notepad C:\\Dumps\n\nNote: Requires administrator privileges."
+);

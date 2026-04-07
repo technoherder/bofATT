@@ -1,0 +1,63 @@
+{
+    "tasks": [
+        {
+            "type": "shell",
+            "label": "BOF: Build active file",
+            "command": "C:\\TDM-GCC-64\\bin\\x86_64-w64-mingw32-gcc.exe",
+            "args": [
+                "-c",
+                "${file}",
+                "-o",
+                "${fileDirname}\\${fileBasenameNoExtension}.x64.o",
+                "-masm=intel",
+                "-Wall"
+            ],
+            "options": {
+                "cwd": "${fileDirname}"
+            },
+            "problemMatcher": ["$gcc"],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "detail": "Compile active .c file to BOF object file"
+        },
+        {
+            "type": "shell",
+            "label": "BOF: Build all kerbeus BOFs",
+            "command": "C:\\TDM-GCC-64\\bin\\x86_64-w64-mingw32-gcc.exe",
+            "args": [
+                "-c",
+                "*.c",
+                "-masm=intel",
+                "-Wall"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}\\kerbeus"
+            },
+            "problemMatcher": ["$gcc"],
+            "group": "build",
+            "detail": "Compile all kerbeus BOF files"
+        },
+        {
+            "type": "shell",
+            "label": "BOF: Build active file (x86)",
+            "command": "C:\\TDM-GCC-64\\bin\\i686-w64-mingw32-gcc.exe",
+            "args": [
+                "-c",
+                "${file}",
+                "-o",
+                "${fileDirname}\\${fileBasenameNoExtension}.x86.o",
+                "-masm=intel",
+                "-Wall"
+            ],
+            "options": {
+                "cwd": "${fileDirname}"
+            },
+            "problemMatcher": ["$gcc"],
+            "group": "build",
+            "detail": "Compile active .c file to 32-bit BOF object file"
+        }
+    ],
+    "version": "2.0.0"
+}

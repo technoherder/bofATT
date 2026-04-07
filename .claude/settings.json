@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Select-String -Pattern \"asreproast|FAILED|succeeded\")"
+    ]
+  }
+}

