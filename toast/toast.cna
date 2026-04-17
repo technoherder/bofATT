@@ -1,0 +1,91 @@
+#
+# Toast BOF Suite - Aggressor Script
+# Abuse Windows toast notifications for lure / credential prompts.
+# Port of https://github.com/netbiosX/ToastNotify
+#
+
+sub toast_exec {
+    local('$bid $bof_name $args $barch $handle $data $packed');
+    $bid = $1;
+    $bof_name = $2;
+    $args = $3;
+
+    $barch = barch($bid);
+    $handle = openf(script_resource("bin/" . $bof_name . "." . $barch . ".o"));
+    $data = readb($handle, -1);
+    closef($handle);
+
+    if (strlen($data) == 0) {
+        berror($bid, "Failed to load BOF: " . $bof_name . "." . $barch . ".o");
+        return;
+    }
+
+    $packed = bof_pack($bid, "z", $args);
+    beacon_inline_execute($bid, $data, "go", $packed);
+}
+
+# ----------------------------------------------------------------------------
+# toast_getaumid - enumerate AUMIDs in HKCU/HKLM
+# ----------------------------------------------------------------------------
+beacon_command_register(
+    "toast_getaumid",
+    "Enumerate registered Application User Model IDs",
+
+    "List AUMIDs under Software\\Classes\\AppUserModelId (HKCU + HKLM).\n" .
+    "Use the DisplayName column to pick an AUMID whose identity would make\n" .
+    "a lure toast convincing to the target user.\n\n" .
+    "Usage:\n" .
+    "   toast_getaumid\n" .
+    "   toast_getaumid /filter:outlook\n"
+);
+
+alias toast_getaumid {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 15);
+    btask($bid, "Toast: enumerating AUMIDs");
+    toast_exec($bid, "toast_getaumid", $args);
+}
+
+# ----------------------------------------------------------------------------
+# toast_send - show a lure toast (SKELETON: WinRT chain pending)
+# ----------------------------------------------------------------------------
+beacon_command_register(
+    "toast_send",
+    "Display a Windows toast notification (skeleton)",
+
+    "Show a ToastGeneric notification under the given AUMID.\n" .
+    "STATUS: WinRT activation chain is scaffolded but not wired — BOF will\n" .
+    "echo the parsed args and exit until Show() is implemented.\n\n" .
+    "Usage:\n" .
+    "   toast_send /aumid:AUMID /title:TITLE /body:BODY\n"
+);
+
+alias toast_send {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 11);
+    btask($bid, "Toast: sending notification");
+    toast_exec($bid, "toast_send", $args);
+}
+
+# ----------------------------------------------------------------------------
+# toast_custom - show a toast from an on-disk XML template (SKELETON)
+# ----------------------------------------------------------------------------
+beacon_command_register(
+    "toast_custom",
+    "Display a toast from a custom XML template (skeleton)",
+
+    "Read an XML template from disk and render it under the given AUMID.\n" .
+    "STATUS: same as toast_send — WinRT chain pending.\n\n" .
+    "Usage:\n" .
+    "   toast_custom /aumid:AUMID /file:C:\\path\\template.xml\n"
+);
+
+alias toast_custom {
+    local('$bid $args');
+    $bid = $1;
+    $args = substr($0, 13);
+    btask($bid, "Toast: rendering custom XML");
+    toast_exec($bid, "toast_custom", $args);
+}

